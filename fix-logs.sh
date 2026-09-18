@@ -118,7 +118,7 @@ for dir in "${UNIQUE_DIRS[@]}"; do
 $dir/*.log {
     daily
     rotate 5
-    size 200M
+    size 100M
     missingok
     notifempty
     compress

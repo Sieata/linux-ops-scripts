@@ -6,7 +6,7 @@
 ## 脚本
 
 - `fix-logs.sh <目录>` — 通用日志膨胀清理：清空指定目录下超过阈值的 `*.log`，并安装 logrotate 规则防止再次涨爆。适用于任何不会自动轮转日志的常驻服务（代理、网关等）。
-- `disk-check.sh` — 检查磁盘/日志维护相关配置（journald 限额、logrotate、定时清理任务），可选执行清理。
+- `disk-check.sh` — 检查磁盘/日志维护相关配置（journald 限额、logrotate 规则、容量占用），可选执行清理。
 
 ## 用法
 
