@@ -72,3 +72,35 @@ sudo bash ./disk-check.sh --clean
 # 连审计日志（/var/log/secure、/var/log/cron）一起清
 sudo bash ./disk-check.sh --clean --clean-audit-logs
 ```
+
+## 验证 logrotate 规则是否生效
+
+跑完 `fix-logs.sh` 之后，用下面几步确认对应目录的 logrotate 规则确实装对了：
+
+```bash
+# 1. 看规则文件内容对不对（路径、size、rotate 份数）
+cat /etc/logrotate.d/logfix-etc-v2ray-agent-xray
+
+# 2. debug 模式：只打印会做什么，不会真的轮转、不会改任何文件
+logrotate -d /etc/logrotate.d/logfix-etc-v2ray-agent-xray
+```
+
+正常情况下 `logrotate -d` 会输出类似：
+
+```
+reading config file /etc/logrotate.d/logfix-etc-v2ray-agent-xray
+Handling 1 logs
+
+rotating pattern: /etc/v2ray-agent/xray/*.log  209715200 bytes (5 rotations)
+empty log files are not rotated, old logs are removed
+considering log /etc/v2ray-agent/xray/error.log
+  log does not need rotating (log size is below the 'size' threshold)
+```
+
+重点看两点：
+- `209715200 bytes (5 rotations)` —— 换算下来是 200M / 5 份，跟脚本里写的一致就说明规则没写错。
+- 全程没有 `error:` 字样。
+
+如果日志文件当前大小没到阈值，会提示 `log does not need rotating`，这是正常的，不代表规则没生效——只是还没到轮转的时候。以后交给系统的 logrotate 定时任务（`logrotate.timer` 或 `/etc/cron.daily/logrotate`）自动执行即可，不需要手动干预。
+
+某个子目录（比如 `tls`）没有生成对应的规则文件，通常是因为那台机器的 `/etc/v2ray-agent` 下本来就没有那个子目录或没有 `*.log` 文件——`fix-logs.sh` 只会给实际发现日志的目录建规则，属于正常现象。
