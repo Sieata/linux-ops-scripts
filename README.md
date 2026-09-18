@@ -6,7 +6,13 @@
 ## 脚本
 
 - `fix-logs.sh <目录>` — 通用日志膨胀清理：清空指定目录下超过阈值的 `*.log`，并安装 logrotate 规则防止再次涨爆。适用于任何不会自动轮转日志的常驻服务（代理、网关等）。
-- `disk-check.sh` — 检查磁盘/日志维护相关配置（journald 限额、logrotate 规则、容量占用），可选执行清理。
+- `disk-check.sh` — 检查磁盘/日志维护相关配置（journald 限额、logrotate 规则、容量占用），可选执行清理。已兼容 RHEL 系（CentOS/AlmaLinux/Rocky）和 Debian 系（Debian/Ubuntu），会自动探测 `messages`/`syslog`、`maillog`/`mail.log`、`secure`/`auth.log` 用哪个。
+
+两个脚本都只依赖 bash + coreutils（`stat`/`truncate`/`find` 等），在 Debian/Ubuntu 上如果没有 `git`，先装一下：
+
+```bash
+apt update && apt install -y git
+```
 
 ## 用法
 
@@ -66,10 +72,10 @@ sudo bash ./fix-logs.sh /var/log/myapp --threshold 50
 # 仅检查，不改任何东西
 sudo bash ./disk-check.sh
 
-# 检查 + 清理常规日志（不含 secure/cron）
+# 检查 + 清理常规日志（不含认证/计划任务日志）
 sudo bash ./disk-check.sh --clean
 
-# 连审计日志（/var/log/secure、/var/log/cron）一起清
+# 连认证/计划任务日志一起清（RHEL 系是 secure/cron，Debian 系是 auth.log/cron.log，脚本会自动探测）
 sudo bash ./disk-check.sh --clean --clean-audit-logs
 ```
 
