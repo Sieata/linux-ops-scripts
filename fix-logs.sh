@@ -2,30 +2,29 @@
 set -euo pipefail
 shopt -s nullglob
 
-# 一键处理 v2ray-agent (xray/v2ray/trojan/hysteria/tuic/sing-box) 日志
-# 无限增长吃满磁盘的问题。背景：xray 等默认不会自动轮转 access.log /
-# error.log，长期运行后单个日志文件可能涨到几十 G，把系统盘写满。
+# 通用日志膨胀清理工具。
+# 背景：很多常驻服务（代理、网关、数据库中间件等）默认不会自动轮转自己的
+# access.log / error.log，长期运行后单个日志文件可能涨到几十 G，把系统盘写满。
 #
-# 本脚本做两件事：
-#   1) 找到超过阈值的日志文件并 truncate 清空（进程持有 fd 会继续写同一个
-#      inode，磁盘空间立即释放，不需要重启代理服务）
+# 本脚本对指定目录（递归）做两件事：
+#   1) 找到超过阈值的 *.log 文件并 truncate 清空（进程持有 fd 会继续写同一个
+#      inode，磁盘空间立即释放，不需要重启对应服务）
 #   2) 给每个发现日志的子目录安装 logrotate 规则（copytruncate，无需给
-#      xray 发信号），防止以后再涨爆
+#      进程发信号），防止以后再涨爆
 #
 # === 用法 ===
-# 用法: sudo bash ./fix_v2ray_log_bloat.sh [安装目录] [选项]
+# 用法: sudo bash ./fix-logs.sh <目录> [选项]
 #
-#   （无参数）             默认扫描 /etc/v2ray-agent，清理 + 装 logrotate
-#   [安装目录]             v2ray-agent 不是默认路径时，传自定义路径
+#   <目录>                 要扫描的日志根目录（必填，会递归查找 *.log）
 #   --dry-run              只报告发现了什么，不清理、不写 logrotate 配置
 #   --threshold SIZE_MB    超过这个大小（MB）才清理，默认 100
 #
 # 示例：
-#   sudo bash ./fix_v2ray_log_bloat.sh
-#   sudo bash ./fix_v2ray_log_bloat.sh --dry-run
-#   sudo bash ./fix_v2ray_log_bloat.sh /opt/v2ray-agent --threshold 50
+#   sudo bash ./fix-logs.sh /etc/v2ray-agent
+#   sudo bash ./fix-logs.sh /etc/v2ray-agent --dry-run
+#   sudo bash ./fix-logs.sh /var/log/myapp --threshold 50
 
-BASE_DIR="/etc/v2ray-agent"
+BASE_DIR=""
 DRY_RUN=0
 THRESHOLD_MB=100
 
@@ -47,6 +46,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "$BASE_DIR" ]]; then
+  echo "用法: sudo bash ./fix-logs.sh <目录> [--dry-run] [--threshold SIZE_MB]" >&2
+  exit 1
+fi
+
 if [[ "$EUID" -ne 0 ]]; then
   echo "[FAIL] 需要 root 权限运行（请用 sudo）" >&2
   exit 1
@@ -56,13 +60,13 @@ pass() { echo "[PASS] $*"; }
 info() { echo "[INFO] $*"; }
 warn() { echo "[WARN] $*"; }
 
-echo "=== v2ray-agent 日志膨胀检查/清理 ==="
-echo "安装目录: $BASE_DIR"
+echo "=== 日志膨胀检查/清理 ==="
+echo "扫描目录: $BASE_DIR"
 [[ "$DRY_RUN" -eq 1 ]] && info "dry-run 模式，只报告不会做任何改动"
 echo
 
 if [[ ! -d "$BASE_DIR" ]]; then
-  info "未发现 $BASE_DIR，本机可能没装 v2ray-agent，跳过"
+  info "未发现 $BASE_DIR，跳过"
   exit 0
 fi
 
@@ -100,7 +104,9 @@ echo
 echo "2) 安装 logrotate 规则，防止再次涨爆"
 mapfile -t UNIQUE_DIRS < <(printf '%s\n' "${DIRS_WITH_LOGS[@]}" | sort -u)
 for dir in "${UNIQUE_DIRS[@]}"; do
-  conf_name="v2ray-agent-$(basename "$dir")"
+  # 用完整路径生成配置名，避免不同子目录同名 basename 互相覆盖
+  safe_name=$(echo "$dir" | sed 's#^/##; s#/#-#g')
+  conf_name="logfix-${safe_name}"
   conf_path="/etc/logrotate.d/$conf_name"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then

@@ -2,6 +2,7 @@
 set -euo pipefail
 shopt -s nullglob
 
+# 通用磁盘/日志维护检查工具。
 # 默认只做检查，不改系统配置。
 # 传 --clean 时执行一次日志清理：
 # - journalctl --vacuum-size=300M
@@ -12,32 +13,41 @@ shopt -s nullglob
 # 并输出清理前后对比。
 #
 # === 用法 ===
-# 用法: sudo bash ./check_disk_maintenance.sh [--clean] [--clean-audit-logs]
+# 用法: sudo bash ./disk-check.sh [--clean] [--clean-audit-logs] [--housekeeping-script PATH]
 #
-#   （无参数）           仅检查配置与容量，不做任何改动
-#   --clean              检查 + 清理常规日志（不含 secure/cron）
-#   --clean-audit-logs   连同 --clean 一起，额外清空审计日志（secure/cron）
+#   （无参数）                    仅检查配置与容量，不做任何改动
+#   --clean                       检查 + 清理常规日志（不含 secure/cron）
+#   --clean-audit-logs            连同 --clean 一起，额外清空审计日志（secure/cron）
+#   --housekeeping-script PATH    检查这个自定义定时清理脚本是否存在/已加入 crontab
+#                                 （默认 /usr/local/bin/log_housekeeping.sh，没有就跳过该检查）
 #
 # === 操作步骤 ===
 # 1. 进入本仓库目录（或直接 git clone 到节点上任意目录）
-# 2. 修复换行符：  sed -i 's/\r$//' ./check_disk_maintenance.sh
-# 3. 仅检查：      sudo bash ./check_disk_maintenance.sh
-# 4. 检查 + 清理： sudo bash ./check_disk_maintenance.sh --clean
-# 5. 连审计日志一起清：sudo bash ./check_disk_maintenance.sh --clean --clean-audit-logs
+# 2. 仅检查：      sudo bash ./disk-check.sh
+# 3. 检查 + 清理： sudo bash ./disk-check.sh --clean
+# 4. 连审计日志一起清：sudo bash ./disk-check.sh --clean --clean-audit-logs
 
 JOURNAL_CONF="/etc/systemd/journald.conf.d/size.conf"
 LOGROTATE_CONF="/etc/logrotate.d/messages-local"
-HOUSEKEEPING_SCRIPT="/usr/local/bin/mercari_housekeeping.sh"
-CRON_NEEDLE="mercari_housekeeping.sh"
+HOUSEKEEPING_SCRIPT="/usr/local/bin/log_housekeeping.sh"
 RUN_CLEAN=0
 RUN_CLEAN_AUDIT=0
 
-for arg in "$@"; do
-  case "$arg" in
-    --clean) RUN_CLEAN=1 ;;
-    --clean-audit-logs) RUN_CLEAN=1; RUN_CLEAN_AUDIT=1 ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --clean) RUN_CLEAN=1; shift ;;
+    --clean-audit-logs) RUN_CLEAN=1; RUN_CLEAN_AUDIT=1; shift ;;
+    --housekeeping-script)
+      HOUSEKEEPING_SCRIPT="${2:?--housekeeping-script 需要一个路径参数}"
+      shift 2
+      ;;
+    *)
+      echo "未知参数: $1" >&2
+      exit 1
+      ;;
   esac
 done
+CRON_NEEDLE="$(basename "$HOUSEKEEPING_SCRIPT")"
 
 if [[ "$RUN_CLEAN" -eq 1 && "$EUID" -ne 0 ]]; then
   echo "[FAIL] --clean 需要 root 权限运行（请用 sudo），否则部分文件无法截断" >&2
@@ -69,7 +79,7 @@ else
 fi
 echo
 
-echo "3) 检查 housekeeping 脚本与 crontab"
+echo "3) 检查 housekeeping 脚本与 crontab ($HOUSEKEEPING_SCRIPT)"
 if [[ -x "$HOUSEKEEPING_SCRIPT" ]]; then
   pass "脚本存在且可执行: $HOUSEKEEPING_SCRIPT"
 else

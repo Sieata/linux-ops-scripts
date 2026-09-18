@@ -5,8 +5,8 @@
 
 ## 脚本
 
-- `fix_v2ray_log_bloat.sh` — 清理代理服务日志膨胀问题，并安装 logrotate 规则防止再次涨爆。
-- `check_disk_maintenance.sh` — 检查磁盘/日志维护相关配置，可选执行清理。
+- `fix-logs.sh <目录>` — 通用日志膨胀清理：清空指定目录下超过阈值的 `*.log`，并安装 logrotate 规则防止再次涨爆。适用于任何不会自动轮转日志的常驻服务（代理、网关等）。
+- `disk-check.sh` — 检查磁盘/日志维护相关配置（journald 限额、logrotate、定时清理任务），可选执行清理。
 
 ## 用法
 
